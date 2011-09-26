@@ -256,7 +256,6 @@ void ConnectionHandler::Handler::start(const FieldTable& serverProperties,
                                                   false ); // disallow interaction
     }
     std::string supportedMechanismsList;
-    bool requestedMechanismIsSupported = false;
     Array::const_iterator i;
 
     /*
@@ -269,11 +268,9 @@ void ConnectionHandler::Handler::start(const FieldTable& serverProperties,
             if (i != supportedMechanisms.begin())
                 supportedMechanismsList += SPACE;
             supportedMechanismsList += (*i)->get<std::string>();
-            requestedMechanismIsSupported = true;
         }
     }
     else {
-        requestedMechanismIsSupported = false;
         /*
           The caller has requested a mechanism.  If it's available,
           make sure it ends up at the head of the list.
@@ -282,7 +279,6 @@ void ConnectionHandler::Handler::start(const FieldTable& serverProperties,
             string currentMechanism = (*i)->get<std::string>();
 
             if ( requestedMechanism == currentMechanism ) {
-                requestedMechanismIsSupported = true;
                 supportedMechanismsList = currentMechanism + SPACE + supportedMechanismsList;
             } else {
                 if (i != supportedMechanisms.begin())

@@ -212,10 +212,9 @@ void RdmaIOHandler::readbuff(Rdma::AsynchIO&, Rdma::Buffer* buff) {
     if (readError) {
         return;
     }
-    size_t decoded = 0;
     try {
         if (codec) {
-            decoded = codec->decode(buff->bytes(), buff->dataCount());
+            (void)codec->decode(buff->bytes(), buff->dataCount());
         }else{
             // Need to start protocol processing
             initProtocolIn(buff);
@@ -230,9 +229,7 @@ void RdmaIOHandler::readbuff(Rdma::AsynchIO&, Rdma::Buffer* buff) {
 void RdmaIOHandler::initProtocolIn(Rdma::Buffer* buff) {
     framing::Buffer in(buff->bytes(), buff->dataCount());
     framing::ProtocolInitiation protocolInit;
-    size_t decoded = 0;
     if (protocolInit.decode(in)) {
-        decoded = in.getPosition();
         QPID_LOG(debug, "Rdma: RECV [" << identifier << "] INIT(" << protocolInit << ")");
 
         codec = factory->create(protocolInit.getVersion(), *this, identifier, SecuritySettings());
@@ -353,12 +350,6 @@ string RdmaIOProtocolFactory::getHost() const {
 }
 
 void RdmaIOProtocolFactory::accept(Poller::shared_ptr poller, ConnectionCodec::Factory* fact) {
-    ::sockaddr_in sin;
-
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(listeningPort);
-    sin.sin_addr.s_addr = INADDR_ANY;
-
     listener.reset(
         new Rdma::Listener(
             Rdma::ConnectionParams(65536, Rdma::DEFAULT_WR_ENTRIES),
