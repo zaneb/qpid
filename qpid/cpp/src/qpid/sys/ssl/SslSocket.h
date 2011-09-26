@@ -23,6 +23,7 @@
  */
 
 #include "qpid/sys/IOHandle.h"
+#include "qpid/sys/Socket.h"
 #include <nspr.h>
 
 #include <string>
@@ -36,26 +37,26 @@ class Duration;
 
 namespace ssl {
 
-class SslSocket : public qpid::sys::IOHandle
+class SslSocket : public qpid::sys::GenericSocket
 {
 public:
     /** Create a socket wrapper for descriptor. */
     SslSocket();
 
     /** Set socket non blocking */
-    void setNonblocking() const;
+    virtual void setNonblocking() const;
 
     /** Set tcp-nodelay */
-    void setTcpNoDelay(bool nodelay) const;
+    virtual void setTcpNoDelay(bool nodelay) const;
 
     /** Set SSL cert-name. Allows the cert-name to be set per
      * connection, overriding global cert-name settings from
      * NSSInit().*/
     void setCertName(const std::string& certName);
 
-    void connect(const std::string& host, uint16_t port) const;
+    virtual void connect(const std::string& host, uint16_t port) const;
 
-    void close() const;
+    virtual void close() const;
 
     /** Bind to a port and start listening.
      *@param port 0 means choose an available port.
@@ -69,52 +70,16 @@ public:
      * Accept a connection from a socket that is already listening
      * and has an incoming connection
      */
-    SslSocket* accept() const;
+    virtual GenericSocket* accept() const;
 
     // TODO The following are raw operations, maybe they need better wrapping?
-    int read(void *buf, size_t count) const;
-    int write(const void *buf, size_t count) const;
-
-    /** Returns the "socket name" ie the address bound to
-     * the near end of the socket
-     */
-    std::string getSockname() const;
-
-    /** Returns the "peer name" ie the address bound to
-     * the remote end of the socket
-     */
-    std::string getPeername() const;
-
-    /**
-     * Returns an address (host and port) for the remote end of the
-     * socket
-     */
-    std::string getPeerAddress() const;
-    /**
-     * Returns an address (host and port) for the local end of the
-     * socket
-     */
-    std::string getLocalAddress() const;
-
-    /**
-     * Returns the full address of the connection: local and remote host and port.
-     */
-    std::string getFullAddress() const { return getLocalAddress()+"-"+getPeerAddress(); }
-
-    uint16_t getLocalPort() const;
-    uint16_t getRemotePort() const;
-
-    /**
-     * Returns the error code stored in the socket.  This may be used
-     * to determine the result of a non-blocking connect.
-     */
-    int getError() const;
+    virtual int read(void *buf, size_t count) const;
+    virtual int write(const void *buf, size_t count) const;
 
     int getKeyLen() const;
     std::string getClientAuthId() const;
 
-private:
-    mutable std::string connectname;
+protected:
     mutable PRFileDesc* socket;
     std::string certname;
 
@@ -126,6 +91,13 @@ private:
     mutable PRFileDesc* prototype;
 
     SslSocket(IOHandlePrivate* ioph, PRFileDesc* model);
+    friend class SslOptionalSocket;
+};
+
+class SslOptionalSocket : public SslSocket
+{
+public:
+    virtual GenericSocket* accept() const;
 };
 
 }}}

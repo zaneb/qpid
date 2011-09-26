@@ -21,6 +21,7 @@
  *
  */
 
+#include "qpid/sys/Socket.h"
 #include "qpid/sys/DispatchHandle.h"
 #include "qpid/sys/SecuritySettings.h"
 
@@ -39,7 +40,7 @@ class SslSocket;
  */
 class SslAcceptor {
 public:
-    typedef boost::function1<void, const SslSocket&> Callback;
+    typedef boost::function1<void, const GenericSocket&> Callback;
 
 private:
     Callback acceptedCallback;

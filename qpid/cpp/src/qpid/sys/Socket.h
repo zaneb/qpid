@@ -33,32 +33,20 @@ namespace sys {
 class Duration;
 class SocketAddress;
 
-class Socket : public IOHandle
+class GenericSocket: public IOHandle
 {
 public:
     /** Create a socket wrapper for descriptor. */
-    QPID_COMMON_EXTERN Socket();
-
-    /** Set timeout for read and write */
-    void setTimeout(const Duration& interval) const;
+    GenericSocket();
 
     /** Set socket non blocking */
-    void setNonblocking() const;
+    virtual void setNonblocking() const = 0;
 
-    QPID_COMMON_EXTERN void setTcpNoDelay() const;
+    virtual void setTcpNoDelay(bool nd) const = 0;
 
-    QPID_COMMON_EXTERN void connect(const std::string& host, uint16_t port) const;
-    QPID_COMMON_EXTERN void connect(const SocketAddress&) const;
+    virtual void connect(const std::string& host, uint16_t port) const = 0;
 
-    QPID_COMMON_EXTERN void close() const;
-
-    /** Bind to a port and start listening.
-     *@param port 0 means choose an available port.
-     *@param backlog maximum number of pending connections.
-     *@return The bound port.
-     */
-    QPID_COMMON_EXTERN int listen(uint16_t port = 0, int backlog = 10) const;
-    QPID_COMMON_EXTERN int listen(const SocketAddress&, int backlog = 10) const;
+    virtual void close() const = 0;
 
     /** Returns the "socket name" ie the address bound to
      * the near end of the socket
@@ -82,9 +70,12 @@ public:
     QPID_COMMON_EXTERN std::string getLocalAddress() const;
 
     /**
-     * Returns the full address of the connection: local and remote host and port.
+     * Returns the full address of the connection: local and remote host and
+     * port.
      */
-    QPID_COMMON_EXTERN std::string getFullAddress() const { return getLocalAddress()+"-"+getPeerAddress(); }
+    QPID_COMMON_EXTERN std::string getFullAddress() const {
+        return getLocalAddress() + "-" + getPeerAddress();
+    }
 
     QPID_COMMON_EXTERN uint16_t getLocalPort() const;
     uint16_t getRemotePort() const;
@@ -98,7 +89,49 @@ public:
     /** Accept a connection from a socket that is already listening
      * and has an incoming connection
      */
-    QPID_COMMON_EXTERN Socket* accept() const;
+    virtual GenericSocket* accept() const = 0;
+
+    virtual int read(void *buf, size_t count) const = 0;
+    virtual int write(const void *buf, size_t count) const = 0;
+
+protected:
+    GenericSocket(IOHandlePrivate *h);
+    mutable std::string connectname;
+};
+
+class Socket : public GenericSocket
+{
+public:
+    /** Create a socket wrapper for descriptor. */
+    QPID_COMMON_EXTERN Socket();
+    Socket(IOHandlePrivate*);
+
+    /** Set timeout for read and write */
+    void setTimeout(const Duration& interval) const;
+
+    /** Set socket non blocking */
+    void setNonblocking() const;
+
+    QPID_COMMON_EXTERN void setTcpNoDelay(bool nd=true) const;
+
+    QPID_COMMON_EXTERN void connect(const std::string& host, uint16_t port) const;
+    QPID_COMMON_EXTERN void connect(const SocketAddress&) const;
+
+    QPID_COMMON_EXTERN void close() const;
+
+    /** Bind to a port and start listening.
+     *@param port 0 means choose an available port.
+     *@param backlog maximum number of pending connections.
+     *@return The bound port.
+     */
+    QPID_COMMON_EXTERN int listen(uint16_t port = 0, int backlog = 10) const;
+    QPID_COMMON_EXTERN int listen(const SocketAddress&, int backlog = 10) const;
+
+
+    /** Accept a connection from a socket that is already listening
+     * and has an incoming connection
+     */
+    QPID_COMMON_EXTERN virtual GenericSocket* accept() const;
 
     // TODO The following are raw operations, maybe they need better wrapping?
     QPID_COMMON_EXTERN int read(void *buf, size_t count) const;
@@ -108,8 +141,6 @@ private:
     /** Create socket */
     void createSocket(const SocketAddress&) const;
 
-    Socket(IOHandlePrivate*);
-    mutable std::string connectname;
     mutable bool nonblocking;
     mutable bool nodelay;
 };

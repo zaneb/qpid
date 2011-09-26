@@ -96,14 +96,21 @@ std::string getService(int fd, bool local)
 }
 }
 
+GenericSocket::GenericSocket():
+    IOHandle(new IOHandlePrivate)
+{}
+
+GenericSocket::GenericSocket(IOHandlePrivate* h):
+    IOHandle(h)
+{}
+
 Socket::Socket() :
-    IOHandle(new IOHandlePrivate),
     nonblocking(false),
     nodelay(false)
 {}
 
 Socket::Socket(IOHandlePrivate* h) :
-    IOHandle(h),
+    GenericSocket(h),
     nonblocking(false),
     nodelay(false)
 {}
@@ -143,12 +150,12 @@ void Socket::setNonblocking() const {
     }
 }
 
-void Socket::setTcpNoDelay() const
+void Socket::setTcpNoDelay(bool nd) const
 {
     int& socket = impl->fd;
-    nodelay = true;
+    nodelay = nd;
     if (socket != -1) {
-        int flag = 1;
+        int flag = nodelay;
         int result = setsockopt(impl->fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag));
         QPID_POSIX_CHECK(result);
     }
@@ -210,7 +217,7 @@ int Socket::listen(const SocketAddress& sa, int backlog) const
     return ntohs(name.sin_port);
 }
 
-Socket* Socket::accept() const
+GenericSocket* Socket::accept() const
 {
     int afd = ::accept(impl->fd, 0, 0);
     if ( afd >= 0)
@@ -230,17 +237,17 @@ int Socket::write(const void *buf, size_t count) const
     return ::write(impl->fd, buf, count);
 }
 
-std::string Socket::getSockname() const
+std::string GenericSocket::getSockname() const
 {
     return getName(impl->fd, true);
 }
 
-std::string Socket::getPeername() const
+std::string GenericSocket::getPeername() const
 {
     return getName(impl->fd, false);
 }
 
-std::string Socket::getPeerAddress() const
+std::string GenericSocket::getPeerAddress() const
 {
     if (connectname.empty()) {
         connectname = getName(impl->fd, false, true);
@@ -248,22 +255,22 @@ std::string Socket::getPeerAddress() const
     return connectname;
 }
 
-std::string Socket::getLocalAddress() const
+std::string GenericSocket::getLocalAddress() const
 {
     return getName(impl->fd, true, true);
 }
 
-uint16_t Socket::getLocalPort() const
+uint16_t GenericSocket::getLocalPort() const
 {
     return std::atoi(getService(impl->fd, true).c_str());
 }
 
-uint16_t Socket::getRemotePort() const
+uint16_t GenericSocket::getRemotePort() const
 {
     return std::atoi(getService(impl->fd, true).c_str());
 }
 
-int Socket::getError() const
+int GenericSocket::getError() const
 {
     int       result;
     socklen_t rSize = sizeof (result);

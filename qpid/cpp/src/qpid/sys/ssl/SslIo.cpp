@@ -90,7 +90,7 @@ void SslAcceptor::start(Poller::shared_ptr poller) {
  * We keep on accepting as long as there is something to accept
  */
 void SslAcceptor::readable(DispatchHandle& h) {
-    SslSocket* s;
+    GenericSocket* s;
     do {
         errno = 0;
         // TODO: Currently we ignore the peers address, perhaps we should

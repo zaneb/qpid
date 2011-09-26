@@ -118,7 +118,7 @@ void AsynchAcceptor::readable(DispatchHandle& h) {
         // TODO: Currently we ignore the peers address, perhaps we should
         // log it or use it for connection acceptance.
         try {
-            s = socket.accept();
+            s = dynamic_cast<Socket*>(socket.accept());
             if (s) {
                 acceptedCallback(*s);
             } else {

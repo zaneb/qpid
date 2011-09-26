@@ -25,6 +25,7 @@
 #include "qpid/Exception.h"
 #include "qpid/sys/posix/check.h"
 #include "qpid/sys/posix/PrivatePosix.h"
+#include "qpid/log/Statement.h"
 
 #include <fcntl.h>
 #include <sys/types.h>
@@ -50,58 +51,6 @@ namespace sys {
 namespace ssl {
 
 namespace {
-std::string getName(int fd, bool local, bool includeService = false)
-{
-    ::sockaddr_storage name; // big enough for any socket address
-    ::socklen_t namelen = sizeof(name);
-
-    int result = -1;
-    if (local) {
-        result = ::getsockname(fd, (::sockaddr*)&name, &namelen);
-    } else {
-        result = ::getpeername(fd, (::sockaddr*)&name, &namelen);
-    }
-
-    QPID_POSIX_CHECK(result);
-
-    char servName[NI_MAXSERV];
-    char dispName[NI_MAXHOST];
-    if (includeService) {
-        if (int rc=::getnameinfo((::sockaddr*)&name, namelen, dispName, sizeof(dispName),
-                                 servName, sizeof(servName),
-                                 NI_NUMERICHOST | NI_NUMERICSERV) != 0)
-            throw QPID_POSIX_ERROR(rc);
-        return std::string(dispName) + ":" + std::string(servName);
-
-    } else {
-        if (int rc=::getnameinfo((::sockaddr*)&name, namelen, dispName, sizeof(dispName), 0, 0, NI_NUMERICHOST) != 0)
-            throw QPID_POSIX_ERROR(rc);
-        return dispName;
-    }
-}
-
-std::string getService(int fd, bool local)
-{
-    ::sockaddr_storage name; // big enough for any socket address
-    ::socklen_t namelen = sizeof(name);
-
-    int result = -1;
-    if (local) {
-        result = ::getsockname(fd, (::sockaddr*)&name, &namelen);
-    } else {
-        result = ::getpeername(fd, (::sockaddr*)&name, &namelen);
-    }
-
-    QPID_POSIX_CHECK(result);
-
-    char servName[NI_MAXSERV];
-    if (int rc=::getnameinfo((::sockaddr*)&name, namelen, 0, 0,
-                                 servName, sizeof(servName),
-                                 NI_NUMERICHOST | NI_NUMERICSERV) != 0)
-        throw QPID_POSIX_ERROR(rc);
-    return servName;
-}
-
 const std::string DOMAIN_SEPARATOR("@");
 const std::string DC_SEPARATOR(".");
 const std::string DC("DC");
@@ -132,7 +81,7 @@ std::string getDomainFromSubject(std::string subject)
 
 }
 
-SslSocket::SslSocket() : IOHandle(new IOHandlePrivate()), socket(0), prototype(0)
+SslSocket::SslSocket() : socket(0), prototype(0)
 {
     impl->fd = ::socket (PF_INET, SOCK_STREAM, 0);
     if (impl->fd < 0) throw QPID_POSIX_ERROR(errno);
@@ -144,7 +93,7 @@ SslSocket::SslSocket() : IOHandle(new IOHandlePrivate()), socket(0), prototype(0
  * returned from accept. Because we use posix accept rather than
  * PR_Accept, we have to reset the handshake.
  */
-SslSocket::SslSocket(IOHandlePrivate* ioph, PRFileDesc* model) : IOHandle(ioph), socket(0), prototype(0)
+SslSocket::SslSocket(IOHandlePrivate* ioph, PRFileDesc* model) : GenericSocket(ioph), socket(0), prototype(0)
 {
     socket = SSL_ImportFD(model, PR_ImportTCPSocket(impl->fd));
     NSS_CHECK(SSL_ResetHandshake(socket, true));
@@ -236,11 +185,37 @@ int SslSocket::listen(uint16_t port, int backlog, const std::string& certName, b
     return ntohs(name.sin_port);
 }
 
-SslSocket* SslSocket::accept() const
+GenericSocket* SslSocket::accept() const
 {
+    QPID_LOG(trace, "Accepting SSL connection.");
     int afd = ::accept(impl->fd, 0, 0);
     if ( afd >= 0) {
         return new SslSocket(new IOHandlePrivate(afd), prototype);
+    } else if (errno == EAGAIN) {
+        return 0;
+    } else {
+        throw QPID_POSIX_ERROR(errno);
+    }
+}
+
+GenericSocket* SslOptionalSocket::accept() const
+{
+    QPID_LOG(trace, "Accepting connection with optional SSL wrapper.");
+    int afd = ::accept(impl->fd, 0, 0);
+    if (afd >= 0) {
+        char buf[4];
+        if (recv(afd, buf, sizeof(buf), MSG_PEEK) != sizeof(buf)) {
+            int err = errno;
+            ::close(afd);
+            throw QPID_POSIX_ERROR(err);
+        }
+        if (memcmp(buf, "AMQP", sizeof(buf)) == 0) {
+            QPID_LOG(trace, "Accepted Plaintext connection.");
+            return new Socket(new IOHandlePrivate(afd));
+        } else {
+            QPID_LOG(trace, "Accepted SSL connection.");
+            return new SslSocket(new IOHandlePrivate(afd), prototype);
+        }
     } else if (errno == EAGAIN) {
         return 0;
     } else {
@@ -256,49 +231,6 @@ int SslSocket::read(void *buf, size_t count) const
 int SslSocket::write(const void *buf, size_t count) const
 {
     return PR_Write(socket, buf, count);
-}
-
-std::string SslSocket::getSockname() const
-{
-    return getName(impl->fd, true);
-}
-
-std::string SslSocket::getPeername() const
-{
-    return getName(impl->fd, false);
-}
-
-std::string SslSocket::getPeerAddress() const
-{
-    if (!connectname.empty())
-        return connectname;
-    return getName(impl->fd, false, true);
-}
-
-std::string SslSocket::getLocalAddress() const
-{
-    return getName(impl->fd, true, true);
-}
-
-uint16_t SslSocket::getLocalPort() const
-{
-    return std::atoi(getService(impl->fd, true).c_str());
-}
-
-uint16_t SslSocket::getRemotePort() const
-{
-    return atoi(getService(impl->fd, true).c_str());
-}
-
-int SslSocket::getError() const
-{
-    int       result;
-    socklen_t rSize = sizeof (result);
-
-    if (::getsockopt(impl->fd, SOL_SOCKET, SO_ERROR, &result, &rSize) < 0)
-        throw QPID_POSIX_ERROR(errno);
-
-    return result;
 }
 
 void SslSocket::setTcpNoDelay(bool nodelay) const
