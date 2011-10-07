@@ -92,7 +92,10 @@ private:
     /** Create socket */
     void createSocket(const SocketAddress&) const;
 
+public:
     Socket(IOHandlePrivate*);
+
+protected:
     mutable std::string localname;
     mutable std::string peername;
     mutable bool nonblocking;
